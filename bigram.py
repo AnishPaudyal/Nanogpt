@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 
 #hyperparameters
-batch_size = 32 
-block_size = 8
+batch_size = 32 #No of independent sequences processed in parallel (B)
+block_size = 8  #sequence lenght/time (T)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 #reading the file
@@ -35,16 +36,25 @@ test_data = data[n:]
 def get_batch(split):
     data = train_data if split == 'train' else test_data
     randx = torch.randint(len(data)- block_size, (batch_size, ))
-    x = torch.stack([data[i:i+block_size] for i in randx]) #(B*T)
-    y = torch.stack([data[i+1:i+block_size+1] for i in randx]) #(B*T)
+    x = torch.stack([data[i:i+block_size] for i in randx]) #(B,T)
+    y = torch.stack([data[i+1:i+block_size+1] for i in randx]) #(B,T)
     x,y = x.to(device), y.to(device)
     return x,y
 
-xa, ya = get_batch('train')
-print(xa.shape)
-print(xa)
-print(ya.shape)
+#creating a simple bigram model
+class BigramLanguageModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
+    
+    def forward(self, idx, target):
+        logits = self.token_embedding_table(idx) #(B,T,C) => raw, unnormalized scores 
+        return logits
 
+xa, ya = get_batch('train')
+model = BigramLanguageModel()
+logits = model(xa, ya)
+print(logits.shape)
 
 
 
