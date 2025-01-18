@@ -1,10 +1,13 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import torch.optim as optim
 
 #hyperparameters
 batch_size = 32 #No of independent sequences processed in parallel (B)
 block_size = 8  #sequence lenght/time (T)
+learning_rate = 1e-2
+max_iters = 3000
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 #reading the file
@@ -80,21 +83,29 @@ class BigramLanguageModel(nn.Module):
         return idx
 
 
-
-xa, ya = get_batch('train')
 model = BigramLanguageModel()
 m = model.to(device)
-logits,loss = model(xa, ya)
-print(logits.shape)
-print(loss.item())
+
+#training the model
+optimizer = optim.AdamW(model.parameters(), lr = learning_rate) #AdamW adds weight decay (adds penalty to the weight) which generalizes the patterns (discourages larger weights) avoiding overfitting
+
+for iters in range(max_iters):
+    #sampling batches of data
+    xa, ya = get_batch('train')
+
+    #get loss
+    logits, loss = model(xa, ya)
+
+    #reset the gradient to zero (so prev grad doesnt append in the new iteration)
+    optimizer.zero_grad(set_to_none= True)
+
+    #calc grad descent
+    loss.backward()
+
+    #update parameters
+    optimizer.step()
+ 
 
 #generating
 context = torch.zeros((1,1), dtype= torch.long) #initial token
 print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
-
-
-
-
-
-
-
