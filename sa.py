@@ -64,12 +64,44 @@ def estimate_loss():
     model.train()
     return out
 
+#single-head self-attention
+class Head(nn.Module):
+    def __init__(self, head_size):
+        super().__init__()
+        self.query = nn.Linear(n_embd, head_size, bias = False) 
+        self.key = nn.Linear(n_embd, head_size, bias = False) 
+        self.value = nn.Linear(n_embd, head_size, bias = False)
+        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size))) #since tril is not an existing parameter
+    
+    def forward(self, x):
+        B,T,C = x.shape
+        q = self.query(x) #(B,T,H)
+        k = self.query(x) #(B,T,H)
+        #computing attention scores (affinities)
+        weight = q @ k.transpose(-2,-1) * C**-0.5 # (B,T,H) * (B,H,T) => (B,T,T)
+        #masking :(makes sure the tokens dont interact with future tokens) / (decoder attention blocks)
+        weight = weight.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+        #softmax
+        weight = F.softmax(weight, dim=-1)
+        #value
+        v = self.value(x)
+        #weighted aggregation of values
+        out = weight @ v
+
+        return out
+
+
+        
+        
+
+
 #creating a simple bigram model
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(vocab_size, n_embd)
+        self.sa_head = Head(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
     
     def forward(self, idx, target = None):
@@ -77,6 +109,7 @@ class BigramLanguageModel(nn.Module):
         tok_embd = self.token_embedding_table(idx)
         pos_embd = self.position_embedding_table(torch.arange(T, device=device))
         x = tok_embd + pos_embd
+        x = self.sa_head(x)
         logits = self.lm_head(x) #(B,T,C) => raw, unnormalized scores 
         if target is None:
             loss = None
