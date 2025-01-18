@@ -47,20 +47,52 @@ class BigramLanguageModel(nn.Module):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
     
-    def forward(self, idx, target):
+    def forward(self, idx, target = None):
         logits = self.token_embedding_table(idx) #(B,T,C) => raw, unnormalized scores 
-        B,T,C = logits.shape
-        #reshaping logits as cross entropy is expected N*C (N= number of prob distribution, C = Channel size)
-        logits = logits.view(B*T, C)
-        target = target.view(B*T)
-        loss = F.cross_entropy(logits, target) # -ve log likelihood (-log(P))
+        if target is None:
+            loss = None
+        else:
+            B,T,C = logits.shape
+            #reshaping logits as cross entropy is expected N*C (N= number of prob distribution, C = Channel size)
+            logits = logits.view(B*T, C)
+            target = target.view(B*T)
+            loss = F.cross_entropy(logits, target) # -ve log likelihood (-log(P))
         return logits, loss
+    
+    def generate(self, idx, max_new_tokens):
+        for steps in range(max_new_tokens):
+
+            #get predictions/logits
+            logits, loss = model(idx)
+            
+            #focus only the last time step/ last block of each batch
+            logits = logits[:,-1,:]
+
+            #softmax
+            probs = F.softmax(logits, dim=-1)
+
+            #sampling new token
+            idx_next = torch.multinomial(probs, num_samples=1)
+
+            #appending the generated token
+            idx = torch.cat((idx, idx_next), dim = 1)
+        
+        return idx
+
+
 
 xa, ya = get_batch('train')
 model = BigramLanguageModel()
+m = model.to(device)
 logits,loss = model(xa, ya)
 print(logits.shape)
 print(loss.item())
+
+#generating
+context = torch.zeros((1,1), dtype= torch.long) #initial token
+print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
+
+
 
 
 
