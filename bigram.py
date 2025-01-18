@@ -49,12 +49,18 @@ class BigramLanguageModel(nn.Module):
     
     def forward(self, idx, target):
         logits = self.token_embedding_table(idx) #(B,T,C) => raw, unnormalized scores 
-        return logits
+        B,T,C = logits.shape
+        #reshaping logits as cross entropy is expected N*C (N= number of prob distribution, C = Channel size)
+        logits = logits.view(B*T, C)
+        target = target.view(B*T)
+        loss = F.cross_entropy(logits, target) # -ve log likelihood (-log(P))
+        return logits, loss
 
 xa, ya = get_batch('train')
 model = BigramLanguageModel()
-logits = model(xa, ya)
+logits,loss = model(xa, ya)
 print(logits.shape)
+print(loss.item())
 
 
 
