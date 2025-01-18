@@ -91,8 +91,18 @@ class Head(nn.Module):
         return out
 
 
-        
-        
+#Multihead attention
+class MultiHeadAttention(nn.Module):
+    #multiple self attention heads in parallel, each head of size (B, T, n_embd/num of heads)
+    def __init__(self, num_heads, head_size):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)]) #each head focuses on diff aspects of input (captures diverse patterns)
+
+    def forward(self, x):
+        #concatenate the weighted aggregation from each head back to the original dimension
+        return torch.cat([h(x) for h in self.heads], dim = -1)
+         
+     
 
 
 #creating a simple bigram model
@@ -101,7 +111,7 @@ class BigramLanguageModel(nn.Module):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(vocab_size, n_embd)
-        self.sa_head = Head(n_embd)
+        self.sa_heads = MultiHeadAttention(4, n_embd//4)
         self.lm_head = nn.Linear(n_embd, vocab_size)
     
     def forward(self, idx, target = None):
@@ -109,7 +119,7 @@ class BigramLanguageModel(nn.Module):
         tok_embd = self.token_embedding_table(idx)
         pos_embd = self.position_embedding_table(torch.arange(T, device=device))
         x = tok_embd + pos_embd
-        x = self.sa_head(x)
+        x = self.sa_heads(x)
         logits = self.lm_head(x) #(B,T,C) => raw, unnormalized scores 
         if target is None:
             loss = None
