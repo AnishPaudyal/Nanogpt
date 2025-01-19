@@ -120,24 +120,43 @@ class feedforward(nn.Module):
         return self.network(x)       
      
 
+class Block(nn.Module):
+    '''transformer block: communication followed by computation'''
+    def __init__(self, n_embd, n_head):
+        super().__init__()
+        head_size = n_embd//n_head
+        #communication
+        self.sa = MultiHeadAttention(n_head, head_size)
+        #computation
+        self.ffwd = feedforward(n_embd)
+    
+    def forward(self, x):
+        x = self.sa(x)
+        x = self.ffwd(x)
+        return x
+
+
+
 
 #creating a simple bigram model
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
-        self.position_embedding_table = nn.Embedding(vocab_size, n_embd)
-        self.sa_heads = MultiHeadAttention(4, n_embd//4)
-        self.ffwd = feedforward(n_embd)
+        self.token_embedding_table = nn.Embedding(vocab_size, n_embd) 
+        self.position_embedding_table = nn.Embedding(vocab_size, n_embd) 
+        self.blocks = nn.Sequential(
+            Block(n_embd, n_head=4),
+            Block(n_embd, n_head=4),
+            Block(n_embd, n_head=4),
+        )
         self.lm_head = nn.Linear(n_embd, vocab_size)
     
     def forward(self, idx, target = None):
         B,T = idx.shape
-        tok_embd = self.token_embedding_table(idx)
-        pos_embd = self.position_embedding_table(torch.arange(T, device=device))
-        x = tok_embd + pos_embd
-        x = self.sa_heads(x)
-        x = self.ffwd(x)
+        tok_embd = self.token_embedding_table(idx) #(B,T,C)
+        pos_embd = self.position_embedding_table(torch.arange(T, device=device)) #(T,C)
+        x = tok_embd + pos_embd #(B,T,C)
+        x = self.blocks(x)
         logits = self.lm_head(x) #(B,T,C) => raw, unnormalized scores 
         if target is None:
             loss = None
