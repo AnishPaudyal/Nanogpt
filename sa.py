@@ -97,10 +97,12 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, num_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)]) #each head focuses on diff aspects of input (captures diverse patterns)
-
+        self.proj = nn.Linear(n_embd, n_embd)
     def forward(self, x):
         #concatenate the weighted aggregation from each head back to the original dimension
-        return torch.cat([h(x) for h in self.heads], dim = -1)
+        out = torch.cat([h(x) for h in self.heads], dim = - 1) 
+        out = self.proj(out) #projects the output back to the residual path(i.e matching dimensionality as input, input features are refined)
+        return out
     
 
 class feedforward(nn.Module):
@@ -110,10 +112,13 @@ class feedforward(nn.Module):
         #feedforward layer with non-linear activation function
         self.network = nn.Sequential(
             #linear layer
-            nn.Linear(n_embd,n_embd),
+            nn.Linear(n_embd, 4 * n_embd),
             
             #Rectified Linear Unit (Adds Non_linearity in the model:: Captures complex patterns)
-            nn.ReLU()
+            nn.ReLU(),
+
+            #project back to residual path (for residual connections)
+            nn.Linear(4 * n_embd, n_embd)
         )
 
     def forward(self, x):
@@ -131,8 +136,8 @@ class Block(nn.Module):
         self.ffwd = feedforward(n_embd)
     
     def forward(self, x):
-        x = self.sa(x)
-        x = self.ffwd(x)
+        x = x + self.sa(x)
+        x = x + self.ffwd(x)
         return x
 
 
