@@ -101,7 +101,23 @@ class MultiHeadAttention(nn.Module):
     def forward(self, x):
         #concatenate the weighted aggregation from each head back to the original dimension
         return torch.cat([h(x) for h in self.heads], dim = -1)
-         
+    
+
+class feedforward(nn.Module):
+
+    def __init__(self, n_embd):
+        super().__init__()
+        #feedforward layer with non-linear activation function
+        self.network = nn.Sequential(
+            #linear layer
+            nn.Linear(n_embd,n_embd),
+            
+            #Rectified Linear Unit (Adds Non_linearity in the model:: Captures complex patterns)
+            nn.ReLU()
+        )
+
+    def forward(self, x):
+        return self.network(x)       
      
 
 
@@ -112,6 +128,7 @@ class BigramLanguageModel(nn.Module):
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.sa_heads = MultiHeadAttention(4, n_embd//4)
+        self.ffwd = feedforward(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
     
     def forward(self, idx, target = None):
@@ -120,6 +137,7 @@ class BigramLanguageModel(nn.Module):
         pos_embd = self.position_embedding_table(torch.arange(T, device=device))
         x = tok_embd + pos_embd
         x = self.sa_heads(x)
+        x = self.ffwd(x)
         logits = self.lm_head(x) #(B,T,C) => raw, unnormalized scores 
         if target is None:
             loss = None
