@@ -5,13 +5,16 @@ import torch.optim as optim
 
 #hyperparameters
 batch_size = 32 # No of independent sequences processed in parallel (B)
-block_size = 8  # sequence lenght/time (T)
+block_size = 16 # sequence lenght/time (T)
 learning_rate = 1e-2
 max_iters = 5000
 eval_interval = 500
 eval_iters = 200
 n_embd = 32 # number of embedding dimension
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+n_head = 4
+n_layers = 6
+dropout = 0.2
 
 torch.manual_seed(1337)
 
@@ -72,6 +75,8 @@ class Head(nn.Module):
         self.key = nn.Linear(n_embd, head_size, bias = False) 
         self.value = nn.Linear(n_embd, head_size, bias = False)
         self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size))) #since tril is not an existing parameter
+
+        self.dropout = nn.Dropout(dropout)
     
     def forward(self, x):
         B,T,C = x.shape
@@ -83,6 +88,8 @@ class Head(nn.Module):
         weight = weight.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         #softmax
         weight = F.softmax(weight, dim=-1)
+        #dropout
+        weight = self.dropout(weight)
         #value
         v = self.value(x)
         #weighted aggregation of values
@@ -98,10 +105,11 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)]) #each head focuses on diff aspects of input (captures diverse patterns)
         self.proj = nn.Linear(n_embd, n_embd)
+        self.dropout = nn.Dropout(dropout)
     def forward(self, x):
         #concatenate the weighted aggregation from each head back to the original dimension
         out = torch.cat([h(x) for h in self.heads], dim = - 1) 
-        out = self.proj(out) #projects the output back to the residual path(i.e matching dimensionality as input, input features are refined)
+        out = self.dropout(self.proj(out)) #projects the output back to the residual path(i.e matching dimensionality as input, input features are refined) and adds a dropout
         return out
     
 
@@ -118,7 +126,10 @@ class feedforward(nn.Module):
             nn.ReLU(),
 
             #project back to residual path (for residual connections)
-            nn.Linear(4 * n_embd, n_embd)
+            nn.Linear(4 * n_embd, n_embd),
+
+            #adding dropout before connecting back to residual path
+            nn.Dropout(dropout)
         )
 
     def forward(self, x):
@@ -152,12 +163,8 @@ class BigramLanguageModel(nn.Module):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd) 
         self.position_embedding_table = nn.Embedding(vocab_size, n_embd) 
-        self.blocks = nn.Sequential(
-            Block(n_embd, n_head=4),
-            Block(n_embd, n_head=4),
-            Block(n_embd, n_head=4),
-            nn.LayerNorm(n_embd),
-        )
+        self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layers)]) # here * unpacks the list of blocks to be passed individually as separate arguments which is what we d
+        self.ln_f = nn.LayerNorm(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
     
     def forward(self, idx, target = None):
@@ -166,6 +173,7 @@ class BigramLanguageModel(nn.Module):
         pos_embd = self.position_embedding_table(torch.arange(T, device=device)) #(T,C)
         x = tok_embd + pos_embd #(B,T,C)
         x = self.blocks(x)
+        x = self.ln_f(x)
         logits = self.lm_head(x) #(B,T,C) => raw, unnormalized scores 
         if target is None:
             loss = None
